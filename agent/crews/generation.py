@@ -17,13 +17,13 @@ class GenerationCrew:
     def generate(self, input_packet: Dict) -> Dict:
         llm_draft = self._llm_generate(input_packet)
         if llm_draft is not None:
-            return llm_draft
+            return self._normalize_draft(llm_draft)
         return self._heuristic_generate(input_packet)
 
     def revise(self, previous_draft: Dict, revision_instructions: List[str], input_packet: Dict) -> Dict:
         llm_revision = self._llm_revise(previous_draft, revision_instructions, input_packet)
         if llm_revision is not None:
-            return llm_revision
+            return self._normalize_draft(llm_revision)
 
         revised = dict(previous_draft)
         revised["summary"] = previous_draft["summary"] + " (revised using reviewer feedback)"
@@ -115,3 +115,43 @@ class GenerationCrew:
                 }
             )
         return plan
+
+    def _normalize_draft(self, draft: Dict) -> Dict:
+        normalized = dict(draft)
+        action_plan = normalized.get("action_plan")
+        if not isinstance(action_plan, list):
+            action_plan = [action_plan] if action_plan else []
+
+        normalized_plan: List[Dict] = []
+        for item in action_plan:
+            if isinstance(item, dict):
+                normalized_plan.append(
+                    {
+                        "action": str(item.get("action", "")).strip() or "Complete one focused improvement step",
+                        "rationale": str(item.get("rationale", "")).strip() or "Build consistency through repetition.",
+                        "time_horizon": str(item.get("time_horizon", "")).strip() or "this week",
+                        "success_metric": str(item.get("success_metric", "")).strip()
+                        or "Track completion rate weekly",
+                    }
+                )
+                continue
+
+            text = str(item).strip()
+            if text:
+                normalized_plan.append(
+                    {
+                        "action": text,
+                        "rationale": "Build consistency through repetition.",
+                        "time_horizon": "this week",
+                        "success_metric": "Track completion rate weekly",
+                    }
+                )
+
+        if not normalized_plan:
+            normalized_plan = self._build_action_plan(
+                normalized.get("topic", "personal development"),
+                [],
+            )
+
+        normalized["action_plan"] = normalized_plan
+        return normalized

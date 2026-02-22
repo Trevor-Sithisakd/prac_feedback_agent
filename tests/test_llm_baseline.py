@@ -69,6 +69,23 @@ class FakeLLM:
         raise AssertionError("Unexpected prompt")
 
 
+class FakeLLMStringActionPlan(FakeLLM):
+    def complete(self, prompt: str) -> str:
+        if "Generate personal development feedback JSON" in prompt:
+            return json.dumps(
+                {
+                    "topic": "Improve confidence at work",
+                    "summary": "LLM generated draft",
+                    "strengths": ["Motivated"],
+                    "growth_areas": ["Communication confidence"],
+                    "action_plan": ["Practice one concise update before standup"],
+                    "reflection_questions": ["What improved this week?"],
+                    "tone_check": "supportive",
+                }
+            )
+        return super().complete(prompt)
+
+
 class LLMBaselineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.llm = FakeLLM()
@@ -90,6 +107,18 @@ class LLMBaselineTests(unittest.TestCase):
         review = EvaluationCrew(llm_client=self.llm).evaluate(draft, input_packet)
         self.assertTrue(review["pass"])
         self.assertEqual(review["overall_score"], 88)
+
+    def test_generation_normalizes_string_action_plan_items_from_llm(self):
+        llm = FakeLLMStringActionPlan()
+        input_packet = IntakeCrew(llm_client=llm).process(
+            IntakeRequest(raw_text="help me improve confidence at work")
+        ).to_dict()
+
+        draft = GenerationCrew(llm_client=llm).generate(input_packet)
+
+        self.assertIsInstance(draft["action_plan"], list)
+        self.assertIsInstance(draft["action_plan"][0], dict)
+        self.assertIn("action", draft["action_plan"][0])
 
 
 if __name__ == "__main__":
