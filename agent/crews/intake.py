@@ -5,7 +5,6 @@ Converts a raw user request into a normalized input packet for downstream crews.
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -25,7 +24,6 @@ from agent.input_layer.schema import (
     DEFAULT_SAFETY_RULES,
     DEFAULT_STYLE_RULES,
 )
-from agent.llm import LLMClient, build_default_llm_client
 
 
 @dataclass
@@ -42,58 +40,7 @@ class IntakeRequest:
 class IntakeCrew:
     """Generate validated input packets for the generation/evaluation pipeline."""
 
-    def __init__(self, llm_client: LLMClient | None = None) -> None:
-        self.llm_client = llm_client if llm_client is not None else build_default_llm_client()
-
     def process(self, request: IntakeRequest) -> InputPacket:
-        llm_packet = self._llm_normalize(request)
-        if llm_packet is not None:
-            llm_packet.validate()
-            return llm_packet
-        return self._heuristic_normalize(request)
-
-    def _llm_normalize(self, request: IntakeRequest) -> InputPacket | None:
-        if self.llm_client is None:
-            return None
-
-        prompt = self._build_intake_prompt(request)
-        try:
-            raw = self.llm_client.complete(prompt)
-            parsed = json.loads(raw)
-        except Exception:
-            return None
-
-        try:
-            packet = InputPacket(
-                topic=parsed["topic"],
-                user_intent=parsed["user_intent"],
-                persona_profile=PersonaProfile(
-                    goals=parsed["persona_profile"].get("goals", []),
-                    context=parsed["persona_profile"].get("context", ""),
-                    preferences=Preferences(
-                        tone=self._sanitize_tone(parsed["persona_profile"].get("preferences", {}).get("tone", request.tone)),
-                        format=self._sanitize_format(parsed["persona_profile"].get("preferences", {}).get("format", request.output_format)),
-                    ),
-                ),
-                guidelines=Guidelines(
-                    must_include=parsed["guidelines"].get("must_include", list(DEFAULT_MUST_INCLUDE)),
-                    style_rules=parsed["guidelines"].get("style_rules", list(DEFAULT_STYLE_RULES)),
-                    safety_rules=parsed["guidelines"].get("safety_rules", list(DEFAULT_SAFETY_RULES)),
-                ),
-                quality_targets=QualityTargets(
-                    min_action_items=int(parsed["quality_targets"].get("min_action_items", 3)),
-                    requires_metrics=bool(parsed["quality_targets"].get("requires_metrics", True)),
-                    pass_threshold=int(parsed["quality_targets"].get("pass_threshold", 80)),
-                ),
-                risk_flags=parsed.get("risk_flags", ["none"]),
-                clarification_needed=bool(parsed.get("clarification_needed", False)),
-                intake_confidence=float(parsed.get("intake_confidence", 0.75)),
-            )
-            return packet
-        except Exception:
-            return None
-
-    def _heuristic_normalize(self, request: IntakeRequest) -> InputPacket:
         topic = self._extract_topic(request)
         user_intent = self._extract_intent(request.raw_text)
         goals = request.goals or self._extract_goals(request.raw_text)
@@ -136,17 +83,6 @@ class IntakeCrew:
         packet.validate()
         return packet
 
-    def _build_intake_prompt(self, request: IntakeRequest) -> str:
-        return (
-            "Normalize this personal-development user request into JSON with keys: "
-            "topic,user_intent,persona_profile,guidelines,quality_targets,risk_flags,"
-            "clarification_needed,intake_confidence."
-            f"\nRaw request: {request.raw_text}\n"
-            f"Given topic: {request.topic}\nGiven goals: {request.goals}\n"
-            f"Context: {request.context}\nTone: {request.tone}\nFormat: {request.output_format}\n"
-            "Return only valid JSON."
-        )
-
     def _extract_topic(self, request: IntakeRequest) -> str:
         if request.topic and request.topic.strip():
             return request.topic.strip()
@@ -172,6 +108,7 @@ class IntakeCrew:
         if bullets:
             return bullets[:5]
 
+        # lightweight heuristic extraction from phrases after "to"
         matches = re.findall(r"\bto\s+([a-zA-Z][^,.!?]{3,60})", text)
         goals = [m.strip() for m in matches][:3]
         return goals if goals else ["Build consistent personal growth habits"]
@@ -221,7 +158,7 @@ class IntakeCrew:
         return out
 
 
-def build_input_packet(payload: Dict[str, Any], llm_client: LLMClient | None = None) -> dict:
+def build_input_packet(payload: Dict[str, Any]) -> dict:
     """Convenience entry point for integrations expecting dictionary IO."""
     req = IntakeRequest(
         raw_text=payload.get("raw_text", ""),
@@ -232,5 +169,5 @@ def build_input_packet(payload: Dict[str, Any], llm_client: LLMClient | None = N
         output_format=payload.get("output_format", "hybrid"),
         constraints=payload.get("constraints"),
     )
-    packet = IntakeCrew(llm_client=llm_client).process(req)
+    packet = IntakeCrew().process(req)
     return packet.to_dict()
