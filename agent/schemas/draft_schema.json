@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DraftOutput",
+  "type": "object",
+  "required": [
+    "topic",
+    "summary",
+    "strengths",
+    "growth_areas",
+    "action_plan",
+    "reflection_questions",
+    "tone_check"
+  ],
+  "properties": {
+    "topic": {"type": "string"},
+    "summary": {"type": "string"},
+    "strengths": {"type": "array", "items": {"type": "string"}},
+    "growth_areas": {"type": "array", "items": {"type": "string"}},
+    "action_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action", "rationale", "time_horizon", "success_metric"],
+        "properties": {
+          "action": {"type": "string"},
+          "rationale": {"type": "string"},
+          "time_horizon": {"type": "string"},
+          "success_metric": {"type": "string"}
+        }
+      }
+    },
+    "reflection_questions": {"type": "array", "items": {"type": "string"}},
+    "tone_check": {"type": "string"}
+  }
+}
