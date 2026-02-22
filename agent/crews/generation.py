@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
-from agent.llm import LLMClient, build_default_llm_client
+from agent.llm import LLMClient, build_default_llm_client, parse_json_object
 
 
 class GenerationCrew:
@@ -51,7 +51,7 @@ class GenerationCrew:
             "Return only valid JSON."
         )
         try:
-            return json.loads(self.llm_client.complete(prompt))
+            return parse_json_object(self.llm_client.complete(prompt))
         except Exception:
             return None
 
@@ -67,7 +67,7 @@ class GenerationCrew:
             "Return only valid JSON."
         )
         try:
-            return json.loads(self.llm_client.complete(prompt))
+            return parse_json_object(self.llm_client.complete(prompt))
         except Exception:
             return None
 

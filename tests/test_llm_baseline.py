@@ -4,6 +4,7 @@ import unittest
 from agent.crews.evaluation import EvaluationCrew
 from agent.crews.generation import GenerationCrew
 from agent.crews.intake import IntakeCrew, IntakeRequest
+from agent.llm import parse_json_object
 
 
 class FakeLLM:
@@ -86,6 +87,28 @@ class FakeLLMStringActionPlan(FakeLLM):
         return super().complete(prompt)
 
 
+class FakeLLMFencedJSON(FakeLLM):
+    def complete(self, prompt: str) -> str:
+        if "Generate personal development feedback JSON" in prompt:
+            return """```json
+{
+  "topic": "Improve confidence at work",
+  "summary": "LLM generated draft",
+  "strengths": ["Motivated"],
+  "growth_areas": ["Communication confidence"],
+  "action_plan": [{
+    "action": "Practice concise updates before standup",
+    "rationale": "Build confidence with repetition",
+    "time_horizon": "this week",
+    "success_metric": "Deliver 3 concise updates"
+  }],
+  "reflection_questions": ["What improved this week?"],
+  "tone_check": "supportive"
+}
+```"""
+        return super().complete(prompt)
+
+
 class LLMBaselineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.llm = FakeLLM()
@@ -119,6 +142,22 @@ class LLMBaselineTests(unittest.TestCase):
         self.assertIsInstance(draft["action_plan"], list)
         self.assertIsInstance(draft["action_plan"][0], dict)
         self.assertIn("action", draft["action_plan"][0])
+
+    def test_parse_json_object_supports_fenced_json(self):
+        data = parse_json_object("""```json
+        {"ok": true, "value": 3}
+        ```""")
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["value"], 3)
+
+    def test_generation_accepts_fenced_json_from_llm(self):
+        llm = FakeLLMFencedJSON()
+        input_packet = IntakeCrew(llm_client=llm).process(
+            IntakeRequest(raw_text="help me improve confidence at work")
+        ).to_dict()
+
+        draft = GenerationCrew(llm_client=llm).generate(input_packet)
+        self.assertEqual(draft["summary"], "LLM generated draft")
 
 
 if __name__ == "__main__":

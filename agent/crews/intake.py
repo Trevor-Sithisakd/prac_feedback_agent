@@ -25,7 +25,7 @@ from agent.input_layer.schema import (
     DEFAULT_SAFETY_RULES,
     DEFAULT_STYLE_RULES,
 )
-from agent.llm import LLMClient, build_default_llm_client
+from agent.llm import LLMClient, build_default_llm_client, parse_json_object
 
 
 @dataclass
@@ -103,7 +103,7 @@ class IntakeCrew:
             "Return only valid JSON."
         )
         try:
-            data = json.loads(self.llm_client.complete(prompt))
+            data = parse_json_object(self.llm_client.complete(prompt))
             packet = InputPacket(
                 topic=data["topic"],
                 user_intent=data["user_intent"],
