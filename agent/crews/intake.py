@@ -5,6 +5,7 @@ Converts a raw user request into a normalized input packet for downstream crews.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,7 @@ from agent.input_layer.schema import (
     DEFAULT_SAFETY_RULES,
     DEFAULT_STYLE_RULES,
 )
+from agent.llm import LLMClient, build_default_llm_client
 
 
 @dataclass
@@ -40,7 +42,14 @@ class IntakeRequest:
 class IntakeCrew:
     """Generate validated input packets for the generation/evaluation pipeline."""
 
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
+        self.llm_client = llm_client if llm_client is not None else build_default_llm_client()
+
     def process(self, request: IntakeRequest) -> InputPacket:
+        llm_packet = self._llm_process(request)
+        if llm_packet is not None:
+            return llm_packet
+
         topic = self._extract_topic(request)
         user_intent = self._extract_intent(request.raw_text)
         goals = request.goals or self._extract_goals(request.raw_text)
@@ -83,6 +92,50 @@ class IntakeCrew:
         packet.validate()
         return packet
 
+    def _llm_process(self, request: IntakeRequest) -> InputPacket | None:
+        if self.llm_client is None:
+            return None
+
+        prompt = (
+            "Normalize this personal-development user request into strict JSON with keys: "
+            "topic,user_intent,persona_profile,guidelines,quality_targets,risk_flags,clarification_needed,intake_confidence.\n"
+            f"Request: {json.dumps(request.__dict__)}\n"
+            "Return only valid JSON."
+        )
+        try:
+            data = json.loads(self.llm_client.complete(prompt))
+            packet = InputPacket(
+                topic=data["topic"],
+                user_intent=data["user_intent"],
+                persona_profile=PersonaProfile(
+                    goals=data["persona_profile"].get("goals", []),
+                    context=data["persona_profile"].get("context", ""),
+                    preferences=Preferences(
+                        tone=self._sanitize_tone(data["persona_profile"].get("preferences", {}).get("tone", "supportive")),
+                        format=self._sanitize_format(
+                            data["persona_profile"].get("preferences", {}).get("format", "hybrid")
+                        ),
+                    ),
+                ),
+                guidelines=Guidelines(
+                    must_include=data["guidelines"].get("must_include", list(DEFAULT_MUST_INCLUDE)),
+                    style_rules=data["guidelines"].get("style_rules", list(DEFAULT_STYLE_RULES)),
+                    safety_rules=data["guidelines"].get("safety_rules", list(DEFAULT_SAFETY_RULES)),
+                ),
+                quality_targets=QualityTargets(
+                    min_action_items=data["quality_targets"].get("min_action_items", 3),
+                    requires_metrics=data["quality_targets"].get("requires_metrics", True),
+                    pass_threshold=data["quality_targets"].get("pass_threshold", 80),
+                ),
+                risk_flags=data.get("risk_flags") or ["none"],
+                clarification_needed=bool(data.get("clarification_needed", False)),
+                intake_confidence=float(data.get("intake_confidence", 0.0)),
+            )
+            packet.validate()
+            return packet
+        except Exception:
+            return None
+
     def _extract_topic(self, request: IntakeRequest) -> str:
         if request.topic and request.topic.strip():
             return request.topic.strip()
@@ -108,7 +161,6 @@ class IntakeCrew:
         if bullets:
             return bullets[:5]
 
-        # lightweight heuristic extraction from phrases after "to"
         matches = re.findall(r"\bto\s+([a-zA-Z][^,.!?]{3,60})", text)
         goals = [m.strip() for m in matches][:3]
         return goals if goals else ["Build consistent personal growth habits"]
