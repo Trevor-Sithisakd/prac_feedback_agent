@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import json
 from typing import Dict, List
+
+from agent.llm import LLMClient, build_default_llm_client
 
 
 class EvaluationCrew:
     """Evaluates generated drafts against quality criteria."""
 
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
+        self.llm_client = llm_client if llm_client is not None else build_default_llm_client()
+
     def evaluate(self, draft: Dict, input_packet: Dict) -> Dict:
+        llm_review = self._llm_evaluate(draft, input_packet)
+        if llm_review is not None:
+            return llm_review
+
         scores = {
             "relevance": self._score_relevance(draft, input_packet),
             "personalization": self._score_personalization(draft, input_packet),
@@ -43,6 +53,21 @@ class EvaluationCrew:
             "revision_instructions": revision_instructions,
             "confidence": 0.82,
         }
+
+    def _llm_evaluate(self, draft: Dict, input_packet: Dict) -> Dict | None:
+        if self.llm_client is None:
+            return None
+        prompt = (
+            "Evaluate draft quality and return strict JSON with keys: "
+            "overall_score,pass,criterion_scores,major_issues,minor_issues,revision_instructions,confidence.\n"
+            f"Draft: {json.dumps(draft)}\n"
+            f"Input packet: {json.dumps(input_packet)}\n"
+            "Use rubric: relevance, personalization, actionability, safety, guideline_adherence."
+        )
+        try:
+            return json.loads(self.llm_client.complete(prompt))
+        except Exception:
+            return None
 
     def _score_relevance(self, draft: Dict, input_packet: Dict) -> int:
         topic = input_packet["topic"].lower()
