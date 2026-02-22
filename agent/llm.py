@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -23,6 +24,41 @@ from typing import Protocol
 class LLMClient(Protocol):
     def complete(self, prompt: str) -> str:
         """Return a model completion as plain text."""
+
+
+def parse_json_object(text: str) -> dict:
+    """Parse a JSON object from model text.
+
+    Accepts strict JSON, markdown-fenced JSON, and text that contains a JSON
+    object substring.
+    """
+    candidate = text.strip()
+
+    # Handle markdown fenced blocks such as ```json ... ```.
+    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", candidate, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        candidate = fenced.group(1).strip()
+
+    try:
+        value = json.loads(candidate)
+        if isinstance(value, dict):
+            return value
+    except Exception:
+        pass
+
+    # Fallback: attempt to extract the first JSON object in text.
+    decoder = json.JSONDecoder()
+    for idx, ch in enumerate(candidate):
+        if ch != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(candidate[idx:])
+            if isinstance(value, dict):
+                return value
+        except Exception:
+            continue
+
+    raise ValueError("No JSON object found in model response")
 
 
 @dataclass
