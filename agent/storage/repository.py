@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -15,7 +15,7 @@ class FileRepository:
 
     def save_run(self, state: Dict) -> Path:
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         path = self.base_dir / f"run_{stamp}.json"
         path.write_text(json.dumps(state, indent=2))
         return path
@@ -23,7 +23,7 @@ class FileRepository:
     def save_final(self, final_output: Dict) -> Path:
         final_dir = self.base_dir / "final"
         final_dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         path = final_dir / f"final_{stamp}.json"
         path.write_text(json.dumps(final_output, indent=2))
         return path
