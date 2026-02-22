@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReviewOutput",
+  "type": "object",
+  "required": [
+    "overall_score",
+    "pass",
+    "criterion_scores",
+    "major_issues",
+    "minor_issues",
+    "revision_instructions",
+    "confidence"
+  ],
+  "properties": {
+    "overall_score": {"type": "integer"},
+    "pass": {"type": "boolean"},
+    "criterion_scores": {"type": "object"},
+    "major_issues": {"type": "array", "items": {"type": "string"}},
+    "minor_issues": {"type": "array", "items": {"type": "string"}},
+    "revision_instructions": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "number"}
+  }
+}
